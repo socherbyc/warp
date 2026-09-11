@@ -259,6 +259,7 @@ impl<T: ModeProvider> ToEscapeSequence<T> for KeystrokeWithDetails<'_> {
             .or_else(|| keystroke_to_c0_control_code(keystroke, mode_provider))
             .or_else(|| cursor_movement_keystroke_to_escape_sequence(keystroke, mode_provider))
             .or_else(|| delete_keystroke_to_escape_sequence(keystroke))
+            .or_else(|| page_navigation_keystroke_to_escape_sequence(keystroke))
             .or_else(|| meta_keystroke_to_escape_sequence(keystroke, mode_provider))
             .or_else(|| backspace_keystroke_to_escape_sequence(keystroke))
     }
@@ -603,6 +604,35 @@ fn delete_keystroke_to_escape_sequence(keystroke: &Keystroke) -> Option<Vec<u8>>
     }
     let mut sequence = C1::CSI.to_vec();
     sequence.extend_from_slice(b"3;");
+    sequence.extend_from_slice(modifier.to_string().as_bytes());
+    sequence.push(b'~');
+    Some(sequence)
+}
+
+/// Returns the escape sequence for a *modified* PageUp/PageDown key: `CSI 5;<mods> ~` /
+/// `CSI 6;<mods> ~` (xterm / Kitty numbering, including Super for Cmd). This covers
+/// Ctrl+PageUp, Ctrl+PageDown, Shift+PageUp, etc.
+///
+/// PageUp/PageDown own legacy escape codes (`CSI 5 ~` / `CSI 6 ~`), so under the Kitty
+/// keyboard protocol they keep this `~` form with a modifier parameter rather than switching
+/// to CSI u — the same reasoning as Delete above.
+///
+/// Returns None for any other key and for *unmodified* page keys, which keep their existing
+/// behaviour: the `terminal:scroll_{up,down}_one_page` bindings drive scrollback, and the
+/// meta path handles `Alt`-prefixing via `map_special_key_to_bytes`.
+fn page_navigation_keystroke_to_escape_sequence(keystroke: &Keystroke) -> Option<Vec<u8>> {
+    let number = match keystroke.key.as_str() {
+        "pageup" => b'5',
+        "pagedown" => b'6',
+        _ => return None,
+    };
+    let modifier = modifier_param(keystroke);
+    if modifier == 1 {
+        return None;
+    }
+    let mut sequence = C1::CSI.to_vec();
+    sequence.push(number);
+    sequence.push(b';');
     sequence.extend_from_slice(modifier.to_string().as_bytes());
     sequence.push(b'~');
     Some(sequence)

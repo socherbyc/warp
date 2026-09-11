@@ -1215,6 +1215,64 @@ fn test_kitty_protocol_cmd_and_option_editing_keys() {
     validate_keystroke_test_cases(os_independent, &mock);
 }
 
+/// Modified PageUp/PageDown emit the xterm/Kitty `CSI 5;<mods> ~` / `CSI 6;<mods> ~` forms.
+///
+/// PageUp/PageDown own legacy escape codes, so like Delete they keep the `~` form with a
+/// modifier parameter instead of switching to CSI u. Ctrl+PageUp/PageDown is what Neovim
+/// binds as `<C-PageUp>`/`<C-PageDown>`.
+#[test]
+fn test_modified_page_navigation_keys() {
+    // Legacy encoding (no Kitty protocol) and DISAMBIGUATE_ESCAPE must agree: page keys
+    // have legacy codes, so the modified form is the same either way.
+    for mock in [TerminalModelMock::new(), mock_with_disambiguate_only()] {
+        let test_cases: &[(Keystroke, Vec<u8>)] = &[
+            (
+                Keystroke::parse("ctrl-pageup").unwrap(),
+                b"\x1b[5;5~".to_vec(),
+            ),
+            (
+                Keystroke::parse("ctrl-pagedown").unwrap(),
+                b"\x1b[6;5~".to_vec(),
+            ),
+            (
+                Keystroke::parse("shift-pageup").unwrap(),
+                b"\x1b[5;2~".to_vec(),
+            ),
+            (
+                Keystroke::parse("shift-pagedown").unwrap(),
+                b"\x1b[6;2~".to_vec(),
+            ),
+            (
+                Keystroke::parse("shift-ctrl-pageup").unwrap(),
+                b"\x1b[5;6~".to_vec(),
+            ),
+        ];
+        validate_keystroke_test_cases(test_cases, &mock);
+    }
+}
+
+/// Unmodified PageUp/PageDown are left entirely alone by the encoder: they yield `None` and
+/// are handled by the `terminal:scroll_up_one_page` / `scroll_down_one_page` bindings (or by
+/// `Alt`-prefixing via the meta path). Guards the modified-key handling above against
+/// regressing scrollback.
+#[test]
+fn test_unmodified_page_navigation_keys_yield_no_sequence() {
+    let mock = TerminalModelMock::new();
+    for key in ["pageup", "pagedown"] {
+        let keystroke = Keystroke::parse(key).unwrap();
+        assert_eq!(
+            KeystrokeWithDetails {
+                keystroke: &keystroke,
+                key_without_modifiers: None,
+                chars: None,
+            }
+            .to_escape_sequence(&mock),
+            None,
+            "unmodified {key} should not be encoded"
+        );
+    }
+}
+
 /// On macOS, Option+Space composes a non-breaking space via the IME. Composition is detected
 /// from the OS-provided `chars`.
 #[test]

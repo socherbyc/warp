@@ -663,6 +663,36 @@ pub fn init(app: &mut AppContext) {
         ),
     ]);
 
+    // Forward Ctrl+PageUp/Ctrl+PageDown to the PTY while a command or TUI owns the screen,
+    // so editors can bind them (e.g. Neovim's `<C-PageUp>`/`<C-PageDown>`).
+    //
+    // On Linux and Windows these chords are bound at the *workspace* level to
+    // `workspace:activate_prev_tab` / `activate_next_tab`. Each view in the responder
+    // chain is matched against its own keymap context (see
+    // `AppContext::dispatch_keystroke`), so the workspace binding cannot be gated on the
+    // terminal's `AltScreen` key — the two contexts are never merged. Registering these on
+    // the terminal view instead lets the inner view claim the chord first (the responder
+    // chain is walked innermost-first), leaving tab switching intact everywhere else.
+    //
+    // Gated like `terminal:backward_tabulation` above so both alt-screen TUIs and
+    // readline-style prompts in a long-running command are covered.
+    //
+    // The sequences are the xterm/Kitty `CSI 5;<mods> ~` / `CSI 6;<mods> ~` forms that
+    // `page_navigation_keystroke_to_escape_sequence` produces, with mods = 5 for Ctrl
+    // (`1 + ctrl(4)`).
+    app.register_fixed_bindings([
+        FixedBinding::new(
+            "ctrl-pageup",
+            TerminalAction::ControlSequence(b"\x1b[5;5~".to_vec()),
+            id!("Terminal") & !id!("IMEOpen") & (id!("LongRunningCommand") | id!("AltScreen")),
+        ),
+        FixedBinding::new(
+            "ctrl-pagedown",
+            TerminalAction::ControlSequence(b"\x1b[6;5~".to_vec()),
+            id!("Terminal") & !id!("IMEOpen") & (id!("LongRunningCommand") | id!("AltScreen")),
+        ),
+    ]);
+
     app.register_editable_bindings([EditableBinding::new(
         "terminal:scroll_to_top_of_selected_block",
         "Scroll to top of selected block",
