@@ -250,6 +250,7 @@
           lib = pkgs.lib;
           rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
           nativeBuildInputs = with pkgs; [
+            bashInteractive
             brotli
             cargo-about
             cargo-nextest
@@ -264,6 +265,7 @@
             python3
             rustToolchain
             rust-analyzer
+            wgsl-analyzer
           ];
           buildInputs = with pkgs; [
             alsa-lib
